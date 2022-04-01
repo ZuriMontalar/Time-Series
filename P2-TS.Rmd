@@ -1,0 +1,261 @@
+---
+title: "<CENTER>Práctica 2: Alisado exponencial</CENTER>"
+author: "<CENTER>Zuri Montalar<CENTER>"
+date: "<CENTER>03/03/2020</CENTER>"
+output: pdf_document
+---
+
+```{r global_options, include=FALSE, message=FALSE}
+ knitr::opts_chunk$set(warning=FALSE)
+```
+
+<div style="text-align: justify">
+
+Primero cargamos los datos:
+
+```{r cargo datos}
+setwd("~/BIOESTADÍSTICA máster/Modelización estadística/Series temporales/Practicas/practica2-st")
+enf<-read.table('Enfermedades_infecciosas_y_parasitarias.txt',header=TRUE) 
+enf<-ts(enf,start = c(1980,1), freq = 12)
+enf<-window(enf,start=c(1998,1))
+library(forecast)
+library(ggplot2)
+```
+
+## Ejercicio 1: Serie con fechado anual
+
+Consideramos la agregación anual de la serie temporal y ajustamos el modelo de alisado más adecuado a nuestros datos. En este caso, tenemos una serie sin estacionalidad, ya que estamos considerando la serie anual.
+
+
+```{r alisado1}
+enf.anual<-aggregate(enf,FUN=sum)
+ets.enf.anual<-ets(enf.anual,model="ZZN")
+summary(ets.enf.anual)
+```
+
+Hemos obtenido un modelo con error multiplicativo, sin tendencia y sin estacionalidad. El error no nos va a influir en las predicciones puntuales. La estacionalidad la habíamos impuesto por tratarse de una serie anual. La tendencia que propone (sin tendencia) coincide con la que esperábamos obtener, pues la serie original era estacionaria, y por tanto la anual también.
+
+Tenemos un error porcentual (MAPE) del 4.73%. Además, tenemos el ACF1 de -0.054, es decir, muy cercano a 0, por lo que hay poca capacidad de mejora. El ratio entre el error del modelo usado y el error de un método ingenuo de predicción (MASE) es de 0.95, y al ser tan cercano a 1 nos indica que el método utilizado no es mejor que el método ingenuo.
+
+Se trata por tanto de un alisado exponencial simple, por lo que dos esimaciones razonables del nivel de la serie en el periodo *t* podrían ser el valor observado para la serie en ese periodo *y~t~*, y el nivel de la serie del periodo previo *l~(t-1)~*.
+
+En cuanto a los parámetros estimados, hemos obtenido (utilizando el método de máxima verosimilitud por defecto), alfa de 0.994, muy cercano a 1, por lo que el nivel es muy irregular y cambia mucho en el tiempo.
+
+
+```{r nivel}
+T_time.anual <- nrow(ets.enf.anual$states)
+ets.enf.anual$states[T_time.anual] # último nivel
+
+```
+
+Como la serie anual es estacionaria, no tenemos pendiente. El valor del último nivel es 6820.329.
+
+Hacemos a continuación la previsión de los tres años siguientes. Como es una serie anual, pondremos h=3.
+
+También la calculamos manualmente y comparamos. Como se trata de un alisado exponencial simple, la predicción para los tres próximos años es la misma e igual a su vez al valor del último nivel, es decir, 6820.329 (aproximadamente 6820 fallecimientos por enfermedades infecciosas y parasitarias cada uno de los tres años). Aun así, también podemos calcularlo mediante la ecuación recursiva para *l~t~*. Vemos que de todos modos obtenemos el mismo valor para la predicción (6820.329).
+
+```{r pred3}
+ets.enf.anual.pred<-forecast(ets.enf.anual,h=3)
+ets.enf.anual.pred
+
+alpha<-ets.enf.anual$par[1]
+(predic<-alpha*enf.anual[length(enf.anual)]+(1-alpha)*
+    ets.enf.anual$states[length(ets.enf.anual$states)-1]) #usando la ecuación recursiva
+
+```
+
+Representamos gráficamente la estimación y la predicción:
+
+<!-- plot(enf.anual,xlim=c(1998,2020)) # Serie anual -->
+<!-- lines((1998:2017),ets.enf.anual$fitted,col="red") # Estimación -->
+<!-- lines((2018:2020),ets.enf.anual.pred$mean,col="blue") # Predicción -->
+<!-- legend(1998.1,7800,legend=c("Serie anual","Estimación", -->
+<!--                          "Predicción"),col=c("black","red","blue"),lty=c(1,1,1)) -->
+
+<!-- # todo junto: -->
+<!-- ts.plot(enf.anual,ets.enf.anual$fitted,ets.enf.anual.pred$mean,col=c("BLACK","RED","BLUE")) -->
+<!-- legend(1998.1,7800,legend=c("Serie original","Estimación","Predicción"), -->
+<!--        col=c("BLACK","RED","BLUE"),lty=c(1,1,1),cex=0.8) -->
+
+<!-- plot(ets.enf.anual) # ESTO ESTÁ MAL. NO ES LA Estimación -->
+
+```{r rep1, fig.width=8,fig.height=4}
+ts.plot(enf.anual,ets.enf.anual$fitted,col=c("BLACK","RED"),main="Estimación serie anual") # Estimación
+legend(1998.1,7700,legend=c("Serie anual","Estimación"),
+       col=c("BLACK","RED"),lty=c(1,1),cex=0.8)
+
+plot(ets.enf.anual.pred,PI=F) #Predicción
+
+```
+
+En la gráfica de la estimación vemos que se corresponde a lo que esperábamos obtener, pues teniendo un valor de alfa de casi la unidad (de 0.994), con el modelo que tenemos (sin tendencia ni estacionalidad), las estimaciones del nivel de cada periodo son prácticamente el nivel de la serie en el periodo previo.
+
+A continuación, obtenemos el residuo e identificamos los valores extremos. También podemos visualizar gráficos que nos permitan deducir si el error es incorrelado y homocedástico.
+
+<!-- # probar con dolines=false -->
+
+```{r residuos1, fig.width=8,fig.height=4}
+error1<-residuals(ets.enf.anual)
+mean(error1) # Vemos si el error tiene media de aproximadamente 0
+desv.tip1<-sd(error1,na.rm=TRUE) # Desviación típica del error
+plot(error1,main="Error - serie anual",ylim=c(-0.2,0.2))
+abline(h=c(-3,-2,2,3)*desv.tip1,lty=2,lwd=2,col=c("blue","red","red","blue"))
+
+lag.plot(error1,do.lines=F,main="Análisis incorrelación \n error - serie anual")
+
+plot(aggregate(error1,FUN=sd),type="p",xlab='Periodo',ylab="Desviación estándar",
+     main="Análisis homocedasticidad \n error- serie anual")
+```
+
+
+Vemos que no hay ningún valor que sobrepase ni superior ni inferiormente tres desviaciones típicas de la media del error (es decir, las franjas azules en la gráfica "Error - serie anual"), por lo que no hay valores atípicos.
+
+Además, representando el error en un periordo respecto al error del periodo siguiente, vemos que el error es incorrelado, pues tenemos una nube de puntos dispersos sin ningún patrón.
+
+Al observar si la varianza se mantiene en el tiempo, vemos que tenemos dispersión, es decir, hay varianzas grandes y pequeñas a lo largo del timepo y no vemos una pauta creciente ni decreciente, sino que se mantienen en una franja más o menos dispersos. Este comportamiento es uno de los indicadores (aunque no suficiente) de que puede producirse homocedasticidad de las varianzas.
+
+
+## Ejercicio 2: Serie con fechado original
+
+En este ejercicio utilizaremos no la serie anual, sino la original.
+
+Ajustamos el modelo de alisado:
+
+```{r alisa2}
+ets.enf<-ets(enf)
+summary(ets.enf)
+```
+
+La función `ets` propone un modelo con error multiplicativo, sin tendencia y con estacionalidad aditiva. Esto corresponde a lo que esperábamos, ya que la serie original tenía tendencia estacionaria, y además vimos que se ajustaba un esquema aditivo (y por tanto la estacionalidad la esperamos aditiva).
+
+Hemos obtenido un alfa relativamente pequeño (de 0.3791), por lo que el nivel no cambia mucho a lo largo del tiempo.
+
+
+```{r nivel2}
+T_time <- nrow(ets.enf$states)
+ets.enf$states[T_time,1] # último nivel
+```
+
+Como la serie es estacionaria, no tenemos pendiente. El valor del último nivel es 586.0435.
+
+
+Hacemos a continuación la previsión del  año siguiente, por lo que pondremos h=12 (12 meses), tanto utilizando la función `forecast` como a mano, y vemos que obtenemos los mismos resultados:
+
+```{r pred22}
+(ets.enf.pred<-forecast(ets.enf,h=12))
+(enf.pred.mano<-ets.enf$states[T_time,1]+ets.enf$states[T_time,13:2]) # predicción a mano
+
+```
+
+
+Representamos la estimación y la predicción junto a la serie original:
+<!-- plot(enf,xlim=c(1998,2019))  -->
+<!-- lines((1998:2017),ets.enf2$fitted,col="red") # Estimación -->
+<!-- lines(seq(2018,2019,length=12),ets.enf2.pred$mean,col="blue") # Predicción -->
+<!-- legend(1998.1,7800,legend=c("Serie original","Estimación", -->
+<!--                          "Predicción"),col=c("black","red","blue"),lty=c(1,1,1)) -->
+
+<!-- # todos juntos: -->
+<!-- ts.plot(enf,ets.enf$fitted,ets.enf.pred$mean,col=c("BLACK","RED","BLUE")) -->
+<!-- legend(1998.1,850,legend=c("Serie original","Estimación","Predicción"), -->
+<!--        col=c("BLACK","RED","BLUE"),lty=c(1,1,1),cex=0.8) -->
+
+
+```{r rep2, fig.width=8,fig.height=4}
+ts.plot(enf,ets.enf$fitted,col=c("BLACK","RED"),main="Estimación serie") # Estimación
+legend(1998.1,850,legend=c("Serie original","Estimación"),
+       col=c("BLACK","RED"),lty=c(1,1),cex=0.8)
+
+plot(ets.enf.pred,PI=F) #Predicción
+
+```
+
+A continuación, validamos el modelo usando la metodología de *Training set/Test set*. Para ello, hemos considerado *t~0~* como diciembre de 2014, por lo que los datos previos a ese mes (él incluído) corresponden al *trainig set*; y los datos desde enero de 2015 hasta el final de la serie, al *test set*.
+
+
+
+```{r intraextra, fig.width=8,fig.height=4}
+
+enf.intra<-window(enf,end=c(2014,12)) # observaciones intra-muestrales
+enf.extra<-window(enf,start=c(2015,1)) # observaciones extra-muestrales
+
+enf.ets.parcial<-ets(enf.intra,model="MNA") # estimamos el modelo con la parte intra-muestral
+enf.ets.test<-ets(enf.extra, model=enf.ets.parcial) # aplicamos el modelo ya estimado a los
+  # datos reservados, las observaciones extra-muestrales
+
+accuracy(enf.ets.test) # error a un periodo vista    
+
+enf.ets.test4<-forecast(enf.ets.parcial,h=48) # predecimos 4 años: del 2015 al 2018, ambos incluídos
+accuracy(enf.ets.test4, enf.extra) # error a largo plazo
+
+```
+
+Fijándonos en todos los casos en el error porcentual absoluto medio (MAPE), tenemos lo siguiente:
+
+Habíamos obtenido que el error de previsión a un periodo vista en el periodo muestral de 1998 a 2017 era del 5.16%.
+
+Considerando ahora el periodo muestral de 1998 a 2014, el error a largo plazo (a 4 años vista) es del 5.09%. Sin embargo, el error de previsión a un periodo vista en el periodo extra-muestral de 2015 a 2018 es del 4.32%; y el error de previsión a largo plazo en el periodo extra-muestral de 2015 a 2018 es del 7.59%.
+
+Por tanto, podríamos decir que el error en todos los casos es bastante bajo (inferior al 10%), aunque el mayor de todos es el correspondiente a a la previsión a largo plazo en el periodo extra-muestral, tal como cabía esperar.
+
+
+<!-- no estoy segura de esto: -->
+
+<!-- ```{r intentoREP} -->
+<!-- ts.plot(enf,enf.ets.test$fitted,enf.ets.test4$mean,col=c("BLACK","RED","BLUE"),lty=c(1,2,2)) -->
+<!-- legend(1998.1,850,legend=c("Serie original","Pred. extra-muestral 1 periodo vista","Pred. extra-muestral 4 periodos vista"),col=c("BLACK","RED","BLUE"),lty=c(1,2,2),cex=0.4) -->
+<!-- ``` -->
+
+
+Ahora obtenemos el residuo e identificamos la presencia de valores extremos. Para ello, como el error en este modelo tenemos que es multiplicativo, calculamos primero el error aditivo. Esto es, restarle a la serie original los valores ajustados:
+
+```{r residuos2, fig.width=8,fig.height=4}
+error2<-ets.enf$x-ets.enf$fitted #Error aditivo
+mean(error2) # Vemos si el error tiene media de aproximadamente 0
+desv.tip2<-sd(error2) # Desviación típica del error
+plot(error2,main="Error")
+abline(h=c(-3,-2,2,3)*desv.tip2,lty=2,lwd=2,col=c("blue","red","red","blue"))
+
+# Outliers:
+# sum(abs(error2>=3*desv.tip2))
+# abs(error2>=3*desv.tip2)
+# sum(abs(error2<=(-3)*desv.tip2))
+#abs(error2<=(-3)*desv.tip2)
+```
+
+La media del error es 0.35, como esperábamos. Vemos que no hay outliers inferiores (valores de error menores que tres veces la desviación típica), y hay dos superiores, que corresponden a agosto de 2003 y a enero de 2005 (en la práctica anterior vimos que el error en agosto de 2003 también correspondía a un outlier). Además, como la mayor parte del error se encuentra dentro de la franja de las dos desviaciones típicas , podríamos decir que se trata de ruido blanco.
+
+Para analizar la incorrelación, representamos el error en un periordo respecto al error del periodo siguiente. Tenemos que el error es incorrelado, pues vemos una nube de puntos sin ningún patrón.
+
+En cuanto a la homocedasticidad, podemos representar en cada año la desviación típica del error anual, y vemos que en general los valores se distribuyen también homogéneamente a lo largo del tiempo, es decir, la varianza parece mantenerse en el tiempo, y en cuyo caso el error sería homocedástico.
+
+
+```{r reperror2, fig.width=8,fig.height=4}
+
+lag.plot(error2,do.lines=F,main="Análisis incorrelación")
+
+plot(aggregate(error2,FUN=sd),type="p",xlab='Periodo',ylab="Desviación estándar",
+     main="Análisis homocedasticidad")
+```
+
+
+
+
+<!-- ahora si que tengo estacionalidad -->
+
+<!-- Como método ingenuo, podríamos utilizar `snaive()`, de modo que la predicción para un periodo es la última observación disponible de las misma estación. -->
+
+<!-- podemos tambien probar con el logaritmo o cambiando algun criterio para estimar los parametros, si queremos, es opcional -->
+
+<!-- este hombre no quiere tooooodas las salidas. quiere resultados finales. si hemos tomado decisoines de por medio, se las contamos -->
+
+
+<!-- prevision para un año completo: 12 meses. -->
+
+<!-- no solo hablar de MAPE. hacer tambien estimacion extramuestral -->
+<!-- donde cortar? pues dejar unos 5,6 u 8 datos libres para ello -->
+
+<!-- las previsioneas a mano visualizarlas nuericamente -->
+<!-- las del forcast numericamente y con plot -->
+
+

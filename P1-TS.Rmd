@@ -1,0 +1,170 @@
+---
+title: "<CENTER>Práctica 1: Introducción a las series temporales</CENTER>"
+author: "<CENTER>ZURI MONTALAR</CENTER>"
+date: "<CENTER>23/02/2020</CENTER>"
+output: pdf_document
+---
+
+```{r global_options, include=FALSE}
+  knitr::opts_chunk$set(warning=FALSE)
+```
+
+## Descripción de la serie temporal
+
+<div style="text-align: justify">
+Primero leemos el fichero e indicamos que se trata de una serie temporal mensual que va desde enero de 1980 hasta diciembre de 2017. Los datos corresponden al número de defunciones mensuales debidas a enfermedades infecciosas y parasitarias en España.
+
+```{r cargo datos,fig.align="center"}
+setwd("~/BIOESTADÍSTICA máster/Modelización estadística/Series temporales/Practicas/practica1-st")
+enf<-read.table('Enfermedades_infecciosas_y_parasitarias.txt', header=TRUE) 
+enf<-ts(enf,start=c(1980,1),freq=12)
+plot(enf, xlab="Periodo",ylab="Nº de fallecidos",main="Nº fallecidos debido
+     a enfermedades infecciosas y parasitarias")
+```
+
+\newpage 
+<div style="text-align: justify">
+
+Al visualizar la serie, observamos que la tendencia es decreciente hasta aproximadamente 1985, después es creciente hasta 1997, y entonces nos encontramos con una caída brusca del número de fallecidos. Este cambio importante en el comportamiento de la serie se debe a que hubo un cambio en la definición de las enfermedades infecciosas y parasitarias. Por tanto, como pretendemos conocer el comportamiento y poder predecir el número de casos en un futuro, etc, no tiene sentido seguir considerando los datos previos a dicho cambio en la clasificación de estas enfermedades, de modo que de ahora en adelante consideraremos que la serie empieza en enero de 1998.
+
+
+```{r nuevoPlot,fig.align="center"}
+enf<-window(enf,start=c(1998,1))
+plot(enf, xlab="Periodo",ylab="Nº de fallecidos",main="Nº fallecidos debido
+     a enfermedades infecciosas y parasitarias")
+```
+<div style="text-align: justify">
+A continuación, creamos y visualizamos una serie anual utilizando la función `sum`, que contendrá la cantidad total de personas fallecidas por este tipo de enfermedades cada año entre 1998 y 2017:
+
+
+```{r anual,fig.align="center"}
+enf.anual<-aggregate(enf,FUN=sum)
+plot(enf.anual,main="Serie anual") # serie anual
+```
+
+<div style="text-align: justify">
+Para determinar si la serie sigue un esquema aditivo o multiplicativo, representamos la serie anual calculada anteriormente frente a la variabilidad (las desviaciones típicas, también anuales):
+
+```{r esquema,fig.align="center"}
+enf.sd<-aggregate(enf,FUN = sd)
+plot(enf.anual,enf.sd,xlab="Nº de casos anuales",ylab="Desviación típica")
+```
+<div style="text-align: justify">
+Vemos que al aumentar el número de casos generalmente no aumenta la variabilidad, por lo que podríamos considerar que estamos ante un esquema aditivo.
+
+Entonces, para realizar la descomposición de la serie podríamos utilizar el método de medias móviles o el de regresiones locales ponderadas. Utilizamos este último mediante la función `stl` ya que así no perdemos datos, y visualizamos cada componente estimada:
+
+```{r descomposicion,fig.align="center"}
+
+# Método de regresiones locales ponderadas
+desc.rlp<-stl(enf[,1],s.window="periodic")
+plot(desc.rlp,main="Resultados de la descomposición")
+
+```
+<!-- # Método de medias móviles: -->
+<!-- # desc.med.mov<-decompose(enf,type="additive") -->
+<!-- # plot(desc.med.mov) -->
+<!-- #names(desc.med.mov) -->
+
+<!-- ts.plot(enf, -->
+<!--         desc.med.mov$trend, -->
+<!--         plot.type = "single", -->
+<!--         col = 1:2, -->
+<!--         lwd = c(1, 2), -->
+<!--         xlab = 'Periodo') # Tendencia -->
+<!-- legend("topright", -->
+<!--        legend = c('Original', 'Tendencia'), -->
+<!--        col = c(1, 2), -->
+<!--        lty = c(1, 1)) -->
+
+<!-- ts.plot(enf,desc.rlp$time.series[, "trend"], -->
+<!--         plot.type = "single", -->
+<!--         col = 1:2, -->
+<!--         lwd = c(1, 2), -->
+<!--         xlab = 'Periodo') # Tendencia -->
+<!-- legend("topright", -->
+<!--        legend = c('Original', 'Tendencia'), -->
+<!--        col = c(1, 2), -->
+<!--        lty = c(1, 1))      -->
+
+<div style="text-align: justify">
+En el gráfico visualizamos, de la parte superior a la inferior: la serie original (a partir de 1998), la estacionalidad, la tendencia y el residuo.
+
+
+A continuación, representamos la estacionalidad para un único año completo:
+
+```{r estacionalidad,fig.align="center"}
+plot(desc.rlp$time.series[1:12,1],type='b',xlab='Mes',ylab='Efecto estacional')
+abline(h =0,lty=2)
+desc.rlp$time.series[1:12,1] # Estacionalidad
+```
+
+<!-- # # Con el método de medias móviles: -->
+<!-- # plot(desc.med.mov$figure,type='b',xlab='Mes',ylab='Efecto estacional') -->
+<!-- # abline(h=1,lty=2) -->
+<!-- # desc.med.mov$figure #estacionalidad -->
+
+<!-- ```{r analisis} -->
+<!-- boxplot((enf-mean(enf))~cycle(enf),outline=FALSE) -->
+<!-- tapply(enf-mean(enf),cycle(enf),mean) -->
+<!-- ``` -->
+<div style="text-align: justify">
+Con todo ello, la tendencia de la serie parece ser creciente hasta 2008, luego decreciente hasta 2012, y vulve a ascender hasta 2015. Sin embargo, si nos fijamos en el número de casos, tenemos que nos movemos en un rango relativamente pequeño.
+
+```{r minmax}
+max(enf.anual)-min(enf.anual)
+mean(enf.anual)
+```
+<div style="text-align: justify">
+Efectivamente, tenemos que la diferencia entre el número de casos anual máximo y mínimo es 1573. Siendo la media anual alrededor de 6880, sería más correcto considerar que las diferencias entre los años no son demasiado significativas y que por tanto la tendencia de la serie es estacionaria, ya que a largo plazo la serie mantiene su valor.
+
+Con respecto a la estacionalidad, vemos que hay más casos de fallecidos por enfermedades infecciosas y parasitarias en los meses entre diciembre y marzo (el pequeño descenso en febrero se puede deber simplemente a que ese mes tiene menos días que el resto), que corresponden a meses de invierno, más fríos. Además y aunque en menor medida, en los meses de julio y agosto, que son los más calurosos, también se da un aumento de casos de fallecimientos por esta causa con respecto al resto de meses del año.
+
+En cuanto a la intervención, tal como hemos comentado anteriormente, en la serie original veíamos que alrededo de 1997 se producía un descenso brusco en el número de casos y que era debido a un cambio en la clasificación de este tipo de enfermedades, lo que producía un cambio permanente en nuestra serie. La mejor opción en este caso era no tener en cuenta los datos de los años anteriores a 1998.
+
+Además, las series temporales de enfermedades no tienen la componente ciclo.
+
+También se ha comentado previamente que nuestra serie tiene un esquema aditivo (y por tanto cada componente suma su efecto a las demás), pues al aumentar el número de casos, la variabilidad se mantiene constante.
+
+## Análisis del residuo
+<div style="text-align: justify">
+Realizamos ahora un análisis del residuo obtenido tras la descomposición. Para ello, consideramos directamente el error de la misma ya que estamos frente a un esquema aditivo y por tanto el error es aditivo.
+
+Representamos el error de la descomposición y dos bandas de confianza: al 95% en rojo (dos desviaciones típicas), y al 99.7% en azul (tres desviaciones típicas).
+
+```{r residuo,fig.align="center"}
+error<-desc.rlp$time.series[,3]
+mean(error) # Vemos si el error tiene media de aproximadamente 0
+desv.tip<-sd(error) #Desviación típica del error
+plot(error,xlab='Periodo',ylab='Casos',main="Error de la descomposición",ylim=c(-110,150))
+abline(h=c(-3,-2,2,3)*desv.tip,lty=2,lwd=2,col=c("blue","red","red","blue"))
+
+# Outliers:
+abs(error>=3*desv.tip)
+abs(error<=(-3)*desv.tip)
+
+```
+<div style="text-align: justify">
+La media del residuo es aproximadamete 0, como cabía esperar. Además, en general es bastante homogéneo, pues dista menos de dos desviaciones típicas de su media. Por tanto, podríamos considerar que se trata de ruido blanco.
+
+Sin embargo, se observan algunos valores atípicos, que podrían corresponder a posibles intervenciones. Se trata de los outliers, pues exceden el umbral de las tres desviaciones típicas: por la parte superior tenemos agosto de 2003 y enero de 2005 y, por la inferior, ninguno. Por tanto, en total hay 2 ocasiones (en 2 de los meses) en las que hubo más fallecimientos por enfermedades infecciosas y parasitarias de las esperadas.
+
+
+```{r incorrelacionYhomocedasticidad,fig.align="center"}
+lag.plot(error,main="Análisis incorrelación")
+plot(aggregate(error,FUN=sd),type="p",xlab='Periodo',ylab="Desviación estándar",
+     main="Análisis homocedasticidad")
+```
+
+
+<!-- plot(aggregate(error,FUN=mad),type="p",xlab='Periodo',ylab="Desviación mediana absoluta",main="Análisis homocedasticidad") -->
+
+<div style="text-align: justify">
+Para analizar la incorrelación, representamos el error en un periordo respecto al error del periodo siguiente. Tenemos que el error es incorrelado,pues vemos una nube de puntos sin ningún patrón.
+
+En cuanto a la homocedasticidad, podemos representar en cada año la desviación típica del error anual, y vemos que en general los valores son bastante similares, a excepción de la observación del 2003, en el que había un mes con valor del error atípico, que superaba el umbral de las tres desviaciones típicas.
+
+
+
+
+

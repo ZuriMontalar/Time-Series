@@ -1,0 +1,209 @@
+---
+title: "<CENTER>Práctica 4: Procesos ARIMA sin estacionalidad</CENTER>"
+author: "<CENTER>Zuri Montalar Mendoza<CENTER>"
+date: "<CENTER>22/03/2020</CENTER>"
+output: pdf_document
+---
+
+```{r global_options, include=FALSE,fig.align="center"}
+ knitr::opts_chunk$set(warning=FALSE)
+```
+
+
+<!-- par(mfrow=c(1,2)) -> fig.width=13,fig.height=4 -->
+<!-- par(mfrow=c(2,2)) -> fig.width=13,fig.height=8 -->
+
+<div style="text-align: justify">
+
+Primero leemos el fichero e indicamos que se trata de una serie temporal mensual que va desde enero de 1980 hasta diciembre de 2017. Los datos corresponden al número de defunciones mensuales debidas a enfermedades infecciosas y parasitarias en España. Ya vimos en la práctica 1 que había un cambio importante en el comportamiento de la serie alrededor de 1997 debido a un cambio en la definición de las enfermedades infecciosas y parasitarias, por lo que decidimos cortar la serie y consideramos entonces que empieza en 1998. Visualizamos la serie mensual.
+
+
+```{r cargo datos,message=FALSE, fig.width=13,fig.height=5}
+setwd("~/BIOESTADÍSTICA máster/Modelización estadística/Series temporales/Practicas/practica4-st")
+enf<-read.table('Enfermedades_infecciosas_y_parasitarias.txt',header=TRUE) 
+enf<-ts(enf,start = c(1980,1), freq = 12)
+enf<-window(enf,start=c(1998,1))
+library(forecast)
+library(ggplot2)
+library(aod)
+plot(enf, xlab="Periodo",ylab="Nº de fallecidos",main="Nº fallecidos debido
+     a enfermedades infecciosas y parasitarias")
+```
+
+Consideramos en este caso la serie con fechado anual, de modo que trabajamos con la serie sin estacionalidad:
+```{r}
+enf.anual<-aggregate(enf,FUN=sum)
+```
+
+
+## Identificación del modelo ARIMA
+
+Recordemos que en la práctica anterior habíamos concluído que la serie anual era estacionaria y ergódica sin necesidad de realizar ninguna transformación a la misma. Por ello, al aplicar el modelo ARIMA tendremos en cuenta que al no tener que diferenciar la serie para hacerla estacionaria, $d=0$.
+
+Para obtener *p* y *q*, podemos observar las funciones de autocorrelación (ACF) y autocorrelación parcial (PACF) de la serie anual:
+
+```{r dsv,fig.align="center"}
+ggtsdisplay(enf.anual)
+
+```
+
+
+En los gráficos de ACF y PACF podemos ver en ambas un pico en $\rho=1$ y con valores de retardo mayores, la correlación es muy baja (generalmente dentro de las bandas de confianza). Sin embargo, este comportamiento no corresponde a ningún porceso ARIMA, de modo que en al menos una de las funciones anteriores deberíamos observar decrecimiento de los valores de correlación. Entonces, de considerar que ese decrecimiento se da en alguna de las dos gráficas anteriores, podríamos decir que sería en la de ACF. Por tanto, estaríamos ante un proceso AR(1), o ARIMA(p=1,d=0,q=0).
+
+También podemos ver qué opción de porceso ARIMA nos indica como más adecuada (menor Akaike) la función `auto.arima` del paquete *forecast*.
+
+```{r}
+auto.arima(enf.anual,d=0,stepwise=FALSE,approximation=FALSE) 
+```
+
+La función `auto.arima` nos ofrece como mejor opción la misma que habíamos deducido viendo las gráficas de ACF y PACF: un proceso ARIMA(1,0,0).
+
+
+## Estimación del modelo
+
+En la práctica 2 vimos que no había ningún outlier al estudaiar el error en la serie anual, por lo que no indicamos que considere ninngún valor atípico.
+Estimamos entonces el modelo consideraro con la función `Arima`:
+
+```{r}
+ar100<-Arima(enf.anual,order=c(1,0,0)) # estimación del modelo ARIMA
+ar100
+```
+
+Vemos que obtenemos $\phi_{1}=0.603$ y $mean=6839.2309$ y que, comparándolas con sus desviaciones típicas correspondientes, ambos coefientes parecen significativos (aunque más adelante probaremos la significatividad de ambos con un contraste de hipótesis). Con ellos, podemos calcular la constante de nuestro modelo como $c=mean(1-\phi_{1})=6839.2309(1-0.603)=2715.175$.
+
+También vemos que el Akaike (ACI) es de 301.34.
+
+A continuación, vemos si hay algún outlier, porque de haberlo deberíamos tenerlo en cuenta en nuestro modelo:
+```{r vdsv, fig.width=13,fig.height=5,fig.align="center"}
+error<-residuals(ar100)
+desv.tip<-sd(error) # Desviación típica del error
+plot(error,main="Error de estimación - serie anual",ylim=c(-1300,1300))
+abline(h=c(-3,-2,2,3)*desv.tip,lty=2,lwd=2,col=c("blue","red","red","blue"))
+
+# valores atipicos, por encima de las 3 desviaciones típicas:
+# error>3*desv.tip
+# error< -3*desv.tip
+```
+
+En el gráfico de las estimación del error en la serie anual no observamos ningún valor atípico (en ningún caso el error de estimación es superior a 3 desviaciones típicas, la banda azul). Por tanto, nos quedamos con este modelo, y procedemos a estudiar la validación del mismo.
+
+El modelo teórico es entonces la siguiente: y~t~~ARIMA(1,0,0), es decir, y~t~~AR(1), lo que corresponde a su vez a $(1-\phi_{1}L)y_{t}=c+\epsilon_{t}$. Al desarrolar, obtenemos que $y_{t}=c+\phi_{1}y_{t-1}+\epsilon_{t}$.
+
+Entonces, el modelo estimado es $\hat{y_{t}}=c+\phi_{1}y_{t-1}$ y, sustituyendo los coeficientes que hemos obtenido, tenemos: $\hat{y_{t}}=2715.175+0.603y_{t-1}$.
+
+Por tanto, la cantidad de casos totales de fallecimientos por enfermedades infecciosas y parasitarias que se espera que haya en España cada año es de 2715 casos, más aproximadamente el 60% de la cantidad de casos que hubo el año anterior.
+
+## Validación completa del modelo
+
+Para que el modelo sea válido ha de cumplir una serie de consideraciones, como que todos los coeficientes del modelo sean significativos, u otras que giran en torno al concepto de que el residuo del modelo ha de ser ruido blanco. Estas consideraciones son: que la media sea 0; que sea homocedástico, incorrelado y que siga una distribución Normal. Las probamos a continuación:
+
+#### Significatividad \newline
+
+Queremos contrastar si el valor de $\phi_{1}$ es significativo. Entonces, realizamos la prueba de Wald (con la función `wald.test` del paquete *aod*), cuya hipótesis nula es que el coeficiente a estudiar es 0.
+
+```{r}
+wald.test(b=coef(ar100),Sigma=vcov(ar100),Terms=1)
+```
+
+Hemos obtenido un p-valor de 0.00048, que al ser inferior al nivel de significación al 5% (0.05), rechazamos la hipótesis nula por lo que aceptamos que $\phi_{1}$ es distinto de 0 y por tanto significativo.
+
+Realizamos el mismo contraste para ver si *mean* es significativo:
+
+```{r}
+wald.test(b=coef(ar100),Sigma=vcov(ar100),Terms=2)
+```
+
+El p-valor obtenido en este caso es de 0.0, y al ser también menor a 0.05, rechazamos la hipótesis nula por lo que aceptamos que *mean* es distinto de 0 y por tanto significativo.
+
+#### Calidad de ajuste \newline
+
+Podemos ver los valores de diferentes medidas de bondad de ajuste:
+
+```{r}
+accuracy(ar100)
+```
+No se puede contrastar si el residuo tiene media cero, pero el error medio es 19.58. Además, tenemos que el error porcentual medio (MAPE) es del 4.25%; un error cuadrático medio (RMSE) de 385.05; y que la predicción del intervalo de confianza es muy buena (ACF1 de 0.089, prácticamente 0).
+
+#### Incorrelación \newline
+
+Estudiamos la incorrelación con el test Box-Ljung, para el que en este caso la hipótesis nula es que $\rho_{1}=\rho_{2}=...=\rho_{k}=0$. Realizamos la prueba para valores de k entre 1 y 5:
+
+```{r}
+pvalor.inc<-c()
+for (i in 1:5) pvalor.inc[i]<- Box.test(error,lag=i,type="Ljung-Box")$p.value
+pvalor.inc
+```
+Hemos obtenido que todos los p-valores con valores de k entre 1 y 5 son mayores a 0.05, por lo que no tenemos evidencia para rechazar la hipótesis nula y entonces aceptaremos que el residuo es incorrelado.
+
+#### Homocedasticidad \newline
+
+Para estudiar la homocedasticidad, realizamos el mismo test Box-Ljung, pero para el cuadrado del residuo en lugar de para el residuo. En este caso, la hipótesis nula es que el residuo es homocedástico, esto es: $\rho_{1}(\epsilon^2_{t})=\rho_{2}(\epsilon^2_{t})=...=\rho_{k}(\epsilon^2_{t})=0$.
+
+```{r}
+pvalor.hom<-c()
+for (i in 1:5) pvalor.hom[i]<- Box.test(error^2,lag=i,type="Ljung-Box")$p.value
+pvalor.hom
+```
+
+Hemos obtenido que todos los p-valores con valores de k entre 1 y 5 son mayores a 0.05, por lo que no tenemos evidencia para rechazar la hipótesis nula y entonces aceptaremos que el residuo es homocedástico.
+
+#### Normalidad \newline
+
+Para estudiar si el residuo sigue una distribución Normal, en este caso utilizaremos el test de Shapiro, pues al tratarse de una serie anual, tenemos una muestra reducida de 20 datos, y este test es potente en muestras pequeñas. Su hipótesis nula es que se da normalidad.
+
+```{r}
+shapiro.test(error)
+```
+
+El p-valor es de 0.205, mayor que 0.05, por lo que no tenemos evidencia para rechazar la hipótesis nula y entonces asumiremos la normalidad del residuo.
+
+Con todo ello el modelo ARIMA(1,0,0) para la serie anual de enfermedades infecciosas y parasitarias ha pasado todas las validaciones requeridas.
+
+
+## Previsión de la serie
+
+Ahora realizamos la previsión de los tres años siguientes con el modelo ARIMA. Utiliamos para ello la función `forecast` y, como es una serie anual, ponemos como argumento *h=3*:
+
+```{r bfvadf,fig.width=13,fig.height=5,fig.align="center"}
+pred.ar100<-forecast(ar100,h=3) # Predicción
+pred.ar100
+plot(pred.ar100,PI=FALSE)
+```
+
+Obtenemos que la predicción para 2018, 2019 y 2020 de casos totales en España de enfermedades infecciosas y parasitarias es, respectivamente (y redondeando a números enteros), de 6827, 6832 y 6835. Es decir, a cada año que pasa el valor predicho (la cantidad de casos estimados) es un poco mayor al anterior, aunque no significativamente, pues hay poca diferencia entre los valores obtenidos.
+
+## Valoración crítica del modelo ARIMA respecto de un modelo de alisado
+
+En la práctica 2, vimos que al estimar la serie anual aplicando técnicas de alisado teníamos un modelo con error multiplicativo, sin tendencia (y sin estacionalidad, por ser anual), esto es, ETS(M,N,N). Obtuvimos también que $\alpha=0.994$ y que el último nivel de la serie era $l=6820.39$.
+
+Teníamos también por tanto que al tratarse de un alisado exponencial simple, la predicción para los tres próximos años era la misma e igual a su vez al valor de ese último nivel, y que por tanto la predicción para 2018, 2019 y 2020 eran las tres de 6820 casos de enfermedades infecciosas y parasitarias cada uno de los años en España.
+
+En comparación a la predicción con el modelo ARIMA, vemos que con este último los valores para los siguientes años (además de ya no ser constantes sino de ir aumentando tal como hemos comentado), son un poco mayores que a los obtenidos con el modelo de alisado.
+
+En cuanto a la calidad de cada uno de los ajustes, por un lado tenemos que con el método de alisado el error porcentual (MAPE) era del 4.73%, y el RMSE de 422.470; por otro lado, con el método ARIMA homos obtenido un MAPE de 4.25%, y el RMSE de 385.05.
+
+Con ello, el error cometido con el método ARIMA es menor, pero no lo suficiente. Es decir, utilizar el método ARIMA en este caso no mejora sustancialmente las predicciones (además de ser más complejo de obtener y de interpretar que el método de alisado). No es de extrañar entonces que hayamos obtenido unos valores estimados para los tres siguientes años muy similares.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
